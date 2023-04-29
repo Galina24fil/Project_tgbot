@@ -9,8 +9,7 @@ from telegram import ReplyKeyboardMarkup, Bot
 from random import randint
 import requests
 
-API_KEY = 'AQVNzhfpiSw09Z_EBDWdUtal9XPJR_I5lVASpWlT'
-FOLDER_ID = 'b1go7l39akkvmdgv9j16'
+
 BOT_TOKEN = "6286692017:AAHlPoyRUzvUSaZuc6pHDX2x4BtB78hb3oY"
 # Запускаем логгирование
 logging.basicConfig(filename='example.log',
