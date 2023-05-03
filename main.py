@@ -7,10 +7,11 @@ from telegram.ext import Application, MessageHandler, filters, ConversationHandl
 from telegram.ext import CommandHandler
 from telegram import ReplyKeyboardMarkup, Bot
 from random import randint
+from data import db_session
+from data.users import User
 import requests
 
 
-BOT_TOKEN = "6286692017:AAHlPoyRUzvUSaZuc6pHDX2x4BtB78hb3oY"
 # Запускаем логгирование
 logging.basicConfig(filename='example.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG
@@ -43,7 +44,7 @@ markup_circles = ReplyKeyboardMarkup(reply_keyboard_circles, one_time_keyboard=F
 reply_keyboard_combo = [['/cancel']]
 markup_combo = ReplyKeyboardMarkup(reply_keyboard_combo, one_time_keyboard=False)
 
-reply_keyboard_rus = [['Задание 2'], ['Задание 3'], ['Задание 4'], ['Задание 5'], ['Обратно к предметам']]
+reply_keyboard_rus = [['Задание 2'], ['Задание 3'], ['Задание 4'], ['Задание 5'], ['Рейтинг'], ['Обратно к предметам']]
 markup_rus = ReplyKeyboardMarkup(reply_keyboard_rus, one_time_keyboard=False)
 
 reply_keyboard_testrus3 = [['Пройти тест'], ['Немного теории'], ['Обратно в русский']]
@@ -52,13 +53,13 @@ markup_testrus3 = ReplyKeyboardMarkup(reply_keyboard_testrus3, one_time_keyboard
 reply_keyboard_stop = [['/stop']]
 markup_stop = ReplyKeyboardMarkup(reply_keyboard_stop, one_time_keyboard=False)
 
-reply_keyboard_eng = [['Правила письма'], ['Переводчик'], ['Обратно к предметам']]
+reply_keyboard_eng = [['Правила письма'], ['Переводчик'], ['Немного теории'], ['Обратно к предметам']]
 markup_eng = ReplyKeyboardMarkup(reply_keyboard_eng, one_time_keyboard=False)
 
 reply_keyboard = [['RU ->> EN', 'RU <<- EN'], ['Закончить перевод']]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
 
-reply_keyboard_physic = [['Механика'], ['МКТ'], ['Электричество'], ['Распады'], ['Обратно к предметам']]
+reply_keyboard_physic = [['Механика'], ['МКТ'], ['Электричество'], ['Распады'], ['Рейтинг'], ['Обратно к предметам']]
 markup_physic = ReplyKeyboardMarkup(reply_keyboard_physic, one_time_keyboard=False)
 
 reply_keyboard_test_physic = [['Пройти тест'], ['Немного теории'], ['Обратно в физику']]
@@ -71,6 +72,11 @@ reply_keyboard_tasks25 = [['Задачи №25'], ['Немного теории'
 markup_tasks25 = ReplyKeyboardMarkup(reply_keyboard_tasks25, one_time_keyboard=False)
 
 
+db_session.global_init("db/bot.db")
+dbs = db_session.create_session()
+dbs.commit()
+
+
 async def login(update, context):
     pass
 
@@ -81,6 +87,27 @@ async def start(update, context):
         rf"Привет, {user.mention_html()}! Я бот-помощник для подготовки к ОГЭ. Выбери предмет:",
         reply_markup=markup_head
     )
+    db_sess = db_session.create_session()
+    user1 = db_sess.query(User).filter(User.user_id == update.message.chat.id).first()
+    if not user1:
+        user = User()
+        user.user_id = update.message.chat.id
+        user.name = update.message.chat.first_name
+        if update.message.chat.last_name:
+            user.surname = update.message.chat.last_name
+        if update.message.chat.username:
+            user.username = update.message.chat.username
+        user.rus = 0
+        user.physic = 0
+        user.eng = 0
+        db_sess.add(user)
+        db_sess.commit()
+    else:
+        if update.message.chat.last_name != user1.surname:
+            user1.surname = update.message.chat.last_name
+        if update.message.chat.username != user1.username:
+            user1.username = update.message.chat.username
+        db_sess.commit()
     return 1
 
 
@@ -138,21 +165,32 @@ async def download_rus_3(update, context):
 
 async def test(update, context):
     if update.message.text == context.user_data['list'][0][1]:
+        prav = 'И это правильный ответ\\! Так держать\\! Пояснение ниже\\.\\.\\.'
+        db_sess = db_session.create_session()
+        user1 = db_sess.query(User).filter(User.user_id == update.message.chat.id).first()
+        user1.rus += 1
+        db_sess.commit()
         context.user_data['count'] += 1
+    else:
+        prav = 'Увы это неправильный ответ\\.\\.\\. Пояснение ниже\\.\\.\\.'
     answer = context.user_data['list'][0][1]
     help_prev = context.user_data['list'][0][2]
     context.user_data['list'].pop(0)
     if len(context.user_data['list']) != 0:
         first = f"Правильный ответ на предыдущий вопрос: {answer}\n"
         last = f"\n\n{context.user_data['list'][0][0]}"
-        await context.bot.send_message(update.message.chat_id, text=f"{first}"
+        await context.bot.send_message(update.message.chat_id, text=f"{prav}\n"
+                                                                    f"{first}"
                                                                     f"||{help_prev}||"
                                                                     f"{last}", parse_mode='MarkdownV2')
         return 'test'
     else:
+        first = f"Правильный ответ на предыдущий вопрос: {answer}\n"
         await context.bot.send_message(update.message.chat_id,
-                                       text=f"Правильных ответов было {context.user_data['count']}",
-                                       reply_markup=markup_rus)
+                                       text=f"{first}"
+                                            f"||{help_prev}||"
+                                            f"\nПравильных ответов было {context.user_data['count']}",
+                                       reply_markup=markup_rus, parse_mode='MarkdownV2')
         context.user_data['count'] = 0
         context.user_data['list'] = []
         return 'rus'
@@ -184,6 +222,21 @@ async def rus3(update, context):
         await update.message.reply_text(
             "Вы вернулись в главное меню", reply_markup=markup_head)
         return 1
+    elif sub == 'Рейтинг':
+        db_sess = db_session.create_session()
+        s = []
+        ss = ''
+        for user in db_sess.query(User).filter(User.rus != 0):
+            s.append([user.name, user.surname, user.rus])
+        if s:
+            ss = []
+            s = sorted(s, key=lambda x: x[2], reverse=True)
+            for i in s:
+                ss.append(f"{i[0]} {i[1]} - {i[2]}")
+            ss = '\n'.join(ss)
+        await update.message.reply_text(f"Рейтинг:\n{ss}\n\n"
+                                        f"Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_rus)
+        return 'rus'
     else:
         await update.message.reply_text(
             "Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_rus)
@@ -199,6 +252,10 @@ async def eng(update, context):
         await update.message.reply_text(
             "Выберите язык для перевода", reply_markup=markup)
         return 'trans'
+    elif sub == "Немного теории":
+        doc = open(f'gram_and_vocab.pdf', 'rb')
+        await context.bot.send_document(update.message.chat_id, doc)
+        doc.close()
     elif sub == 'Обратно к предметам':
         await update.message.reply_text(
             "Вы вернулись в главное меню", reply_markup=markup_head)
@@ -270,14 +327,22 @@ async def download_physic(update, context):
 
 async def test_physic(update, context):
     if update.message.text == context.user_data['list'][0][1]:
+        prav = 'И это правильный ответ\\! Так держать\\! Пояснение ниже\\.\\.\\.'
+        db_sess = db_session.create_session()
+        user1 = db_sess.query(User).filter(User.user_id == update.message.chat.id).first()
+        user1.physic += 1
+        db_sess.commit()
         context.user_data['count'] += 1
+    else:
+        prav = 'Увы это неправильный ответ\\.\\.\\. Пояснение ниже\\.\\.\\.'
     answer = context.user_data['list'][0][1]
     help_prev = context.user_data['list'][0][2]
     context.user_data['list'].pop(0)
     if len(context.user_data['list']) != 0:
         first = f"Правильный ответ на предыдущий вопрос: {answer}\n"
         last = f"\n\n{context.user_data['list'][0][0]}"
-        await context.bot.send_message(update.message.chat_id, text=f"{first}"
+        await context.bot.send_message(update.message.chat_id, text=f"{prav}\n"
+                                                                    f"{first}"
                                                                     f"||{help_prev}||"
                                                                     f"{last}", parse_mode='MarkdownV2')
         return 'test_phy'
@@ -319,6 +384,21 @@ async def physic(update, context):
         await update.message.reply_text(
             "Вы вернулись в главное меню", reply_markup=markup_head)
         return 1
+    elif sub == 'Рейтинг':
+        db_sess = db_session.create_session()
+        s = []
+        ss = ''
+        for user in db_sess.query(User).filter(User.physic != 0):
+            s.append([user.name, user.surname, user.physic])
+        if s:
+            ss = []
+            s = sorted(s, key=lambda x: x[2], reverse=True)
+            for i in s:
+                ss.append(f"{i[0]} {i[1]} - {i[2]}")
+            ss = '\n'.join(ss)
+        await update.message.reply_text(f"Рейтинг:\n{ss}\n\n"
+                                        f"Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_physic)
+        return 'phy'
     else:
         await update.message.reply_text(
             "Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_physic)
@@ -344,6 +424,7 @@ async def maths(update, context):
         await update.message.reply_text(
             "Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_maths)
         return 'maths'
+
 
 
 async def help_command(update, context):
@@ -427,7 +508,7 @@ def main():
             'phy': [MessageHandler(filters.TEXT & ~filters.COMMAND, physic)],
             'download_physic': [MessageHandler(filters.TEXT & ~filters.COMMAND, download_physic)],
             'test_phy': [MessageHandler(filters.TEXT & ~filters.COMMAND, test_physic)],
-            'maths': [MessageHandler(filters.TEXT & ~filters.COMMAND, maths)],
+            'maths': [MessageHandler(filters.TEXT & ~filters.COMMAND, maths)]
         },
         fallbacks=[CommandHandler('stop', stop)]
     )
