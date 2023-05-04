@@ -12,6 +12,7 @@ from data.users import User
 import requests
 
 
+
 # Запускаем логгирование
 logging.basicConfig(filename='example.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG
@@ -20,10 +21,13 @@ logging.basicConfig(filename='example.log',
 logger = logging.getLogger(__name__)
 # Супер-помощник ОГЭ
 
+reply_keyboard_start = [['/start']]  # выбор предмета
+markup_start = ReplyKeyboardMarkup(reply_keyboard_start, one_time_keyboard=False)
+
 reply_keyboard_head = [['Русский'], ['Математика'], ['Физика'], ['Английский']]  # выбор предмета
 markup_head = ReplyKeyboardMarkup(reply_keyboard_head, one_time_keyboard=False)
 
-reply_keyboard_main = [['/tasks', '/statistics']]  # добавить тест теория и раздел
+reply_keyboard_main = [['/tasks', '/statistics']]
 markup_main = ReplyKeyboardMarkup(reply_keyboard_main, one_time_keyboard=False)
 
 reply_keyboard_tasks = [['/triangles'], ['/poligons'], ['/circles'], ['/combo'], ['/back']]
@@ -71,7 +75,6 @@ markup_maths = ReplyKeyboardMarkup(reply_keyboard_maths, one_time_keyboard=False
 reply_keyboard_tasks25 = [['Задачи №25'], ['Немного теории'], ['Обратно к предметам']]
 markup_tasks25 = ReplyKeyboardMarkup(reply_keyboard_tasks25, one_time_keyboard=False)
 
-
 db_session.global_init("db/bot.db")
 dbs = db_session.create_session()
 dbs.commit()
@@ -95,6 +98,8 @@ async def start(update, context):
         user.name = update.message.chat.first_name
         if update.message.chat.last_name:
             user.surname = update.message.chat.last_name
+        else:
+            user.surname = ''
         if update.message.chat.username:
             user.username = update.message.chat.username
         user.rus = 0
@@ -103,9 +108,13 @@ async def start(update, context):
         db_sess.add(user)
         db_sess.commit()
     else:
-        if update.message.chat.last_name != user1.surname:
+        print(user1.surname)
+        if not user1.surname:
+            user1.surname = ''
+            print(user1.surname)
+        elif update.message.chat.last_name != user1.surname:
             user1.surname = update.message.chat.last_name
-        if update.message.chat.username != user1.username:
+        elif update.message.chat.username != user1.username:
             user1.username = update.message.chat.username
         db_sess.commit()
     return 1
@@ -426,61 +435,24 @@ async def maths(update, context):
         return 'maths'
 
 
+async def exit(update, context):
+    await update.message.reply_text(f"Вы решили выйти из диалога с ботом!\n"
+                                    f"Чтобы возобновить нажмите /start", reply_markup=markup_start)
+    return ConversationHandler.END
+
 
 async def help_command(update, context):
     await update.message.reply_text("Вот, что я умею:\n"
-                                    "/tasks - меню тем\n"
-                                    "/statistics - статистика решенных задач\n"
-                                    "/triangles - задачи на треугольники\n"
-                                    "/poligons - задачи на многоугольники\n"
-                                    "/circles - задачи на окружности\n"
-                                    "/combo - задачи на комбинацию тем\n"
-                                    "/back - возврат в основное меню (задач и статистики)\n"
-                                    "/cancel - возврат в меню с темами задач")
+                                    "/start - начало\n"
+                                    "/stop - прерывание теста\n"
+                                    "/exit - окончание диалога с ботом (сброс диалога)\n"
+                                    "/help - всемогучая помощь"
+                                    "и другие кнопки, в которые можно перейти после /start\n"
+                                    "~С уважением создатели бота: Филиппова Галина и Вишнепольская Кира")
 
 
 async def echo(update, context):
     await update.message.reply_text(f"Я получил сообщение: '{update.message.text}'")
-
-
-async def tasks(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /tasks", reply_markup=markup_tasks)
-
-
-async def triangles(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /triangles , выберите одну из задач", reply_markup=markup_triangles)
-
-
-async def poligons(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /poligons , выберите одну из задач", reply_markup=markup_poligons)
-
-
-async def circles(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /circles , выберите одну из задач", reply_markup=markup_circles)
-
-
-async def combo(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /combo , выберите одну из задач", reply_markup=markup_combo)
-
-
-async def cancel(update, context):
-    await update.message.reply_text(
-        "Вы вернулись в меню с темами задач", reply_markup=markup_tasks)
-
-
-async def statistics(update, context):
-    await update.message.reply_text(
-        "Вы зашли в раздел /statistics", reply_markup=markup_statistics)
-
-
-async def back(update, context):
-    await update.message.reply_text(
-        "Вы вернулись в основное меню", reply_markup=markup_main)
 
 
 async def stop(update, context):
@@ -510,21 +482,13 @@ def main():
             'test_phy': [MessageHandler(filters.TEXT & ~filters.COMMAND, test_physic)],
             'maths': [MessageHandler(filters.TEXT & ~filters.COMMAND, maths)]
         },
-        fallbacks=[CommandHandler('stop', stop)]
+        fallbacks=[CommandHandler('stop', stop), CommandHandler('exit', exit)]
     )
     application.add_handler(conv_handler)
 
     application.add_handler(text_handler)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("tasks", tasks))
-    application.add_handler(CommandHandler("triangles", triangles))
-    application.add_handler(CommandHandler("poligons", poligons))
-    application.add_handler(CommandHandler("circles", circles))
-    application.add_handler(CommandHandler("combo", combo))
-    application.add_handler(CommandHandler("cancel", cancel))
-    application.add_handler(CommandHandler("statistics", statistics))
-    application.add_handler(CommandHandler("back", back))
 
     application.run_polling()
 
