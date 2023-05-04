@@ -11,8 +11,9 @@ from data import db_session
 from data.users import User
 import requests
 
-
-
+API_KEY = 'ключ'
+FOLDER_ID = 'индентификатор папки'
+BOT_TOKEN = "токен бота"
 # Запускаем логгирование
 logging.basicConfig(filename='example.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.DEBUG
@@ -57,8 +58,12 @@ markup_testrus3 = ReplyKeyboardMarkup(reply_keyboard_testrus3, one_time_keyboard
 reply_keyboard_stop = [['/stop']]
 markup_stop = ReplyKeyboardMarkup(reply_keyboard_stop, one_time_keyboard=False)
 
-reply_keyboard_eng = [['Правила письма'], ['Переводчик'], ['Немного теории'], ['Обратно к предметам']]
+reply_keyboard_eng = [['Правила письма'], ['Переводчик'], ['Немного теории'], ['Словообразование'], ['Рейтинг'],
+                      ['Обратно к предметам']]
 markup_eng = ReplyKeyboardMarkup(reply_keyboard_eng, one_time_keyboard=False)
+
+reply_keyboard_word = [['Пройти тест'], ['Немного теории'], ['Обратно в английский']]
+markup_word = ReplyKeyboardMarkup(reply_keyboard_word, one_time_keyboard=False)
 
 reply_keyboard = [['RU ->> EN', 'RU <<- EN'], ['Закончить перевод']]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
@@ -252,6 +257,67 @@ async def rus3(update, context):
         return 'rus'
 
 
+async def download_eng(update, context):
+    if update.message.text == 'Пройти тест':
+        context.user_data['list'] = []
+        context.user_data['count'] = 0
+        with open(f'test_{context.user_data["file"]}.json', encoding="utf-8") as file:
+            f = file.read()
+            data = json.loads(f)
+            data = data['test']
+            ss = []
+            for i in data:
+                ss.append((i['question'], i['response'], i['help']))
+        context.user_data['count'] = 0
+        context.user_data['list'] = random.sample(ss, 5)
+
+        print(context.user_data)
+        await context.bot.send_message(update.message.chat_id, text=f"{context.user_data['list'][0][0]}",
+                                       reply_markup=markup_stop, parse_mode='MarkdownV2')
+        return 'test_eng'
+    elif update.message.text == 'Обратно в английский':
+        await update.message.reply_text(
+            "Вы вернулись в Английский", reply_markup=markup_eng)
+        return 'eng'
+    elif update.message.text == 'Немного теории':
+        doc = open(f'words.pdf', 'rb')
+        await context.bot.send_document(update.message.chat_id, doc)
+        doc.close()
+
+
+async def test_eng(update, context):
+    if update.message.text == context.user_data['list'][0][1]:
+        prav = 'И это правильный ответ\\! Так держать\\! Пояснение ниже\\.\\.\\.'
+        db_sess = db_session.create_session()
+        user1 = db_sess.query(User).filter(User.user_id == update.message.chat.id).first()
+        user1.eng += 1
+        db_sess.commit()
+        context.user_data['count'] += 1
+    else:
+        prav = 'Увы это неправильный ответ\\.\\.\\. Пояснение ниже\\.\\.\\.'
+    answer = context.user_data['list'][0][1]
+    help_prev = context.user_data['list'][0][2]
+    context.user_data['list'].pop(0)
+    if len(context.user_data['list']) != 0:
+        first = f"Правильный ответ на предыдущий вопрос: {answer}\n"
+        last = f"\n\n{context.user_data['list'][0][0]}"
+        await context.bot.send_message(update.message.chat_id, text=f"{prav}\n"
+                                                                    f"{first}"
+                                                                    f"||{help_prev}||"
+                                                                    f"{last}", parse_mode='MarkdownV2')
+        return 'test_eng'
+    else:
+        first = f"Правильный ответ на предыдущий вопрос: {answer}\n"
+        await context.bot.send_message(update.message.chat_id,
+                                       text=f"{first}"
+                                            f"||{help_prev}||"
+                                            f"\nПравильных ответов было {context.user_data['count']}",
+                                       reply_markup=markup_eng, parse_mode='MarkdownV2')
+        context.user_data['count'] = 0
+        context.user_data['list'] = []
+        return 'eng'
+
+
 async def eng(update, context):
     sub = update.message.text
     if sub == "Правила письма":
@@ -269,10 +335,30 @@ async def eng(update, context):
         await update.message.reply_text(
             "Вы вернулись в главное меню", reply_markup=markup_head)
         return 1
+    elif sub == 'Словообразование':
+        await update.message.reply_text(
+            "Словообразование по английскому языку", reply_markup=markup_word)
+        context.user_data["file"] = 'eng_1'
+        return 'download_eng'
+    elif sub == 'Рейтинг':
+        db_sess = db_session.create_session()
+        s = []
+        ss = ''
+        for user in db_sess.query(User).filter(User.eng != 0):
+            s.append([user.name, user.surname, user.eng])
+        if s:
+            ss = []
+            s = sorted(s, key=lambda x: x[2], reverse=True)
+            for i in s:
+                ss.append(f"{i[0]} {i[1]} - {i[2]}")
+            ss = '\n'.join(ss)
+        await update.message.reply_text(f"Рейтинг:\n{ss}\n\n"
+                                        f"Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_eng)
+        return 'eng'
     else:
         await update.message.reply_text(
-            "Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_rus)
-        return 'rus'
+            "Выберите нужный вам раздел с помощью кнопок", reply_markup=markup_eng)
+        return 'eng'
 
 
 async def change_lang(update, context):
@@ -480,7 +566,9 @@ def main():
             'phy': [MessageHandler(filters.TEXT & ~filters.COMMAND, physic)],
             'download_physic': [MessageHandler(filters.TEXT & ~filters.COMMAND, download_physic)],
             'test_phy': [MessageHandler(filters.TEXT & ~filters.COMMAND, test_physic)],
-            'maths': [MessageHandler(filters.TEXT & ~filters.COMMAND, maths)]
+            'maths': [MessageHandler(filters.TEXT & ~filters.COMMAND, maths)],
+            'download_eng': [MessageHandler(filters.TEXT & ~filters.COMMAND, download_eng)],
+            'test_eng': [MessageHandler(filters.TEXT & ~filters.COMMAND, test_eng)],
         },
         fallbacks=[CommandHandler('stop', stop), CommandHandler('exit', exit)]
     )
